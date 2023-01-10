@@ -44,6 +44,12 @@ MODA_PLANS_URL = "https://www.modahealth.com/shop/plans/medical-plans"
 session = requests.Session()
 
 class People:
+	"""
+		Class to represent the insured and whatever dependents they have.
+		Important bits are the add() function, which can more-or-less pull
+		info like the command line, and the covered() function, which returns
+		a transformed version of everyone add()ed for feeding into INTAKE.
+	"""
 	insured = None
 	spouse = None
 	children = None
@@ -91,6 +97,7 @@ class People:
 		return ret
 
 def normalize_date(date):
+	# Return the date in a form Moda's website likes.
 	return parser.parse(date).strftime("%m/%d/%Y")
 
 def set_locality(zipcode="97103"):
@@ -138,11 +145,32 @@ def get_plans(zipcode, people):
 	raise ValueError("Couldn't find PlansInitialData in output.")
 
 def get_plans_csv(zipcode, people, output):
+	"""
+		Convert Moda's response to a reasonable tablular CSV.
+		We require a ZIP code, a People object, and an output
+		writer to write to (like sys.stdout, a file descriptor...).
+	"""
 	resultset = get_plans(zipcode, people)
 	writer = csv.writer(output)
+	# cols will eventually hold the mapping between dictionary keys and the
+	# column the value will go into in the resulting CSV.
 	cols = None
+	# The first thing that Moda returns in JSON that's useful is the Results.
+	# Under that is the set of stuff in the Plan.  So basically:
+	#
+	#  "Results": [
+	#    "Rate": "$1,234.56",
+	#    "Plan": {
+	#      "Name": "Moda Whatever Whatever",
+	#      "Feature": "something",
+	#      ...
+	# Rate is held outside the plan along with some "is this plan
+	# recommended"-type stuff that we don't really care about, so it's
+	# special-cased.
 	for result in resultset["Results"]:
 		plan = result["Plan"]
+		# If this is the first row, we need to put together the column
+		# header.
 		if cols is None:
 			cols = dict(Name=0, Rate=1)
 			row = ["Name", "Rate"]
@@ -154,6 +182,8 @@ def get_plans_csv(zipcode, people, output):
 				cols[key] = i
 				i += 1
 			writer.writerow(row)
+		# OK, now spit out the rest of the row.  Pre-allocate the columns
+		# and fill them in.
 		row = [None] * len(cols)
 		i = 0
 		if "Name" in plan:
@@ -186,6 +216,7 @@ if __name__ == "__main__":
 	zipcode = sys.argv[1]
 	people = People()
 	person = None
+	# Parse the command-line arguments.
 	for arg in sys.argv[2:]:
 		if person is not None and len(person) == 3:
 			people.add(person)
@@ -197,4 +228,5 @@ if __name__ == "__main__":
 	if person is not None and len(person) == 3:
 		people.add(person)
 
+	# By default, we shove everything to stdout.
 	get_plans_csv(zipcode, people, sys.stdout)
